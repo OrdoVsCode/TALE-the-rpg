@@ -1,58 +1,56 @@
 use ggez::{Context, GameResult};
-use ggez::graphics::{self, Canvas, DrawParam};
-use nalgebra as na;
+use ggez::graphics::Canvas;
+use crate::assets::Assets;
+use crate::rooms::{Room, GridRoom};
+// Re-export TILE_SIZE so existing code can continue to import it from crate::map::TILE_SIZE
+pub use crate::rooms::TILE_SIZE;
 
+/// Map now manages multiple rooms and delegates drawing/collision to the active room.
 pub struct Map {
-    // Simplified map representation
-    tiles: Vec<Vec<bool>>,
+    rooms: Vec<Box<dyn Room>>,
+    current: usize,
 }
 
 impl Map {
     pub fn new() -> Map {
-        let tiles = vec![vec![true; 20]; 15];
-        Map { tiles }
+        let mut rooms: Vec<Box<dyn Room>> = Vec::new();
+        // start with a single GridRoom 20x15, matching previous map size
+        rooms.push(Box::new(GridRoom::new(20, 15)));
+        Map { rooms, current: 0 }
     }
 
-    pub fn draw(&self, ctx: &mut Context) -> GameResult {
-        let mut canvas = Canvas::from_frame(ctx, graphics::Color::new(0.0, 0.0, 0.0, 0.0));
-        let tile_size = 32.0;
-        for (y, row) in self.tiles.iter().enumerate() {
-            for (x, &tile) in row.iter().enumerate() {
-                if tile {
-                    let rectangle = graphics::Mesh::new_rectangle(
-                        ctx,
-                        graphics::DrawMode::fill(),
-                        graphics::Rect::new((x as f32) * tile_size, (y as f32) * tile_size, tile_size, tile_size),
-                        graphics::Color::new(0.5, 0.5, 0.5, 1.0),
-                    )?;
-                    canvas.draw(&rectangle, DrawParam::default());
-                }
-            }
-        }
-        canvas.finish(ctx)
+    pub fn draw(&self, ctx: &mut Context, canvas: &mut Canvas, assets: &Assets, scale: f32, offset: (f32, f32)) -> GameResult {
+        self.rooms[self.current].draw(ctx, canvas, assets, scale, offset)
     }
 
-    // Convert a point in world coordinates to tile indices and return whether it's solid
     pub fn is_solid_at_point(&self, x: f32, y: f32) -> bool {
-        let tile_size = 32.0;
-        if x < 0.0 || y < 0.0 { return true; }
-        let tx = (x / tile_size) as isize;
-        let ty = (y / tile_size) as isize;
-        if ty < 0 || tx < 0 { return true; }
-        let ty_us = ty as usize;
-        let tx_us = tx as usize;
-        if ty_us >= self.tiles.len() { return true; }
-        if tx_us >= self.tiles[ty_us].len() { return true; }
-        self.tiles[ty_us][tx_us]
+        self.rooms[self.current].is_solid_at_point(x, y)
+    }
+
+    pub fn is_rect_free(&self, x: f32, y: f32, w: f32, h: f32) -> bool {
+        self.rooms[self.current].is_rect_free(x, y, w, h)
     }
 
     pub fn width_pixels(&self) -> usize {
-        if let Some(row) = self.tiles.get(0) {
-            row.len() * 32
-        } else { 0 }
+        self.rooms[self.current].width_pixels()
     }
 
     pub fn height_pixels(&self) -> usize {
-        self.tiles.len() * 32
+        self.rooms[self.current].height_pixels()
+    }
+
+    pub fn interact_tile(&mut self, tx: usize, ty: usize) -> bool {
+        self.rooms[self.current].interact_tile(tx, ty)
+    }
+
+    /// Add a new room and return its index.
+    pub fn add_room(&mut self, room: Box<dyn Room>) -> usize {
+        self.rooms.push(room);
+        self.rooms.len() - 1
+    }
+
+    /// Switch to another room index (no bounds checking - caller should ensure valid).
+    pub fn set_current(&mut self, idx: usize) {
+        if idx < self.rooms.len() { self.current = idx; }
     }
 }

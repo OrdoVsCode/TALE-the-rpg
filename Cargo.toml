@@ -7,3 +7,9 @@ edition = "2024"
 ggez = "0.9.3"
 rand = "0.9.2"
 nalgebra = "0.32"
+zip = "0.5.13"
+winit = "0.28"
+# ureq is only used indirectly in some environments; lockfile showed it pulled in rustls -> ring
+# Force ureq to use the platform TLS implementation (native-tls) and disable default features
+# to avoid building the `ring` crate (assembly issues on some Arch setups).
+ureq = { version = "2.12.1", default-features = false, features = ["native-tls"] }
