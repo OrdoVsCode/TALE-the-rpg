@@ -1,5 +1,6 @@
 use ggez::{Context, GameResult};
-use ggez::graphics::{Image, Color, ImageFormat};
+use ggez::graphics::{Image, ImageFormat};
+use ggez::audio::SoundSource;
 
 pub const TILE_SIZE: usize = 32;
 
@@ -72,9 +73,16 @@ pub struct Assets {
     pub enemy: Image,
     pub plank: Image,
     pub wall: Image,
+    pub bed: Image,
+    pub table: Image,
+    pub wall_joint: Image,
     pub title_bg: Image,
     // store the registered font name so callers can reference it when building Text
     pub title_font_name: String,
+    // Music tracks
+    pub title_music: Option<ggez::audio::Source>,
+    pub indoors_music: Option<ggez::audio::Source>,
+    pub overworld_music: Option<ggez::audio::Source>,
 }
 
 impl Assets {
@@ -82,6 +90,8 @@ impl Assets {
     // Use resource-relative paths. ContextBuilder should include the `assets/` folder.
     let player = Image::from_path(ctx, "/player.png")?;
     let enemy = Image::from_path(ctx, "/enemy.png")?;
+    let bed = Image::from_path(ctx, "/bed.png")?;
+    let table = Image::from_path(ctx, "/table.png")?;
     // Try to load a dedicated tile image. If it doesn't exist, generate a procedural plank floor texture.
     let plank = match Image::from_path(ctx, "/tile.png") {
         Ok(img) => img,
@@ -119,6 +129,8 @@ impl Assets {
             Image::from_pixels(ctx, &buf, ImageFormat::Rgba8Unorm, w as u32, h as u32)
         }
     };
+    // Wall joint overlay image
+    let wall_joint = Image::from_path(ctx, "/wall-joint.png")?;
     // Title background image (recommended filename: assets/title_bg.png)
     let title_bg = Image::from_path(ctx, "/title_bg.png")?;
     // register the font with the graphics context and store its name
@@ -139,6 +151,54 @@ impl Assets {
     }
 
     let title_font_name = if loaded_font { font_name } else { String::new() };
-    Ok(Assets { player, enemy, plank, wall, title_bg, title_font_name: title_font_name })
+    
+    // Load music tracks
+    let title_music = match ggez::audio::Source::new(ctx, "/Music/TALE-stay_strong.mp3") {
+        Ok(source) => {
+            // Don't set repeat for title music - we'll handle the 3-second delay manually
+            Some(source)
+        }
+        Err(e) => {
+            println!("Assets::load: failed to load title music: {}", e);
+            None
+        }
+    };
+    
+    let indoors_music = match ggez::audio::Source::new(ctx, "/Music/TALE-you_feel_safe.mp3") {
+        Ok(mut source) => {
+            source.set_repeat(true);
+            Some(source)
+        }
+        Err(e) => {
+            println!("Assets::load: failed to load indoors music: {}", e);
+            None
+        }
+    };
+    
+    let overworld_music = match ggez::audio::Source::new(ctx, "/Music/TALE-the_land_greets_you.mp3") {
+        Ok(mut source) => {
+            source.set_repeat(true);
+            Some(source)
+        }
+        Err(e) => {
+            println!("Assets::load: failed to load overworld music: {}", e);
+            None
+        }
+    };
+    
+    Ok(Assets { 
+        player, 
+        enemy, 
+        plank, 
+        wall, 
+        bed,
+        table,
+        wall_joint,
+        title_bg, 
+        title_font_name,
+        title_music,
+        indoors_music,
+        overworld_music,
+    })
     }
 }

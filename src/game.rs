@@ -2,6 +2,7 @@ use ggez::{Context, GameResult};
 use ggez::event::EventHandler;
 use ggez::graphics::{Canvas, Color};
 use ggez::input::keyboard::{KeyCode, KeyInput};
+use ggez::audio::SoundSource;
 
 use crate::player;
 use crate::enemy;
@@ -31,6 +32,15 @@ pub struct Game {
     options: Options,
     // when toggling fullscreen, allow an extra integer scale multiplier so the 4:3 game fills more of the screen
     fullscreen_scale_mul: f32,
+    // Music management
+    current_music: Option<String>,
+    title_music_timer: f32,
+    // FPS counter
+    fps_timer: f32,
+    fps_counter: u32,
+    fps_display: u32,
+    // GBA refresh rate limiter
+    frame_limiter_accumulator: f32,
 }
 
 impl Game {
@@ -62,14 +72,89 @@ impl Game {
             intro: Intro::new(intro_lines),
             options: Options::new(),
             fullscreen_scale_mul: 1.0,
+            current_music: None,
+            title_music_timer: 0.0,
+            fps_timer: 0.0,
+            fps_counter: 0,
+            fps_display: 0,
+            frame_limiter_accumulator: 0.0,
         })
+    }
+
+    fn set_music(&mut self, ctx: &mut Context, music_name: &str) {
+        if self.current_music.as_ref() == Some(&music_name.to_string()) {
+            return; // Already playing this music
+        }
+
+        // Start new music
+        match music_name {
+            "title" => {
+                if let Some(ref mut music) = self.assets.title_music {
+                    music.set_volume(1.0);
+                    let _ = music.play_detached(ctx);
+                    self.title_music_timer = 0.0;
+                }
+            }
+            "indoors" => {
+                if let Some(ref mut music) = self.assets.indoors_music {
+                    music.set_volume(1.0);
+                    let _ = music.play_detached(ctx);
+                }
+            }
+            "overworld" => {
+                if let Some(ref mut music) = self.assets.overworld_music {
+                    music.set_volume(1.0);
+                    let _ = music.play_detached(ctx);
+                }
+            }
+            _ => {}
+        }
+
+        self.current_music = Some(music_name.to_string());
+    }
+
+    fn stop_music(&mut self, _ctx: &mut Context) {
+        // Stop all currently playing music by setting volume to 0 and pausing
+        if let Some(ref mut music) = self.assets.title_music {
+            music.set_volume(0.0);
+            let _ = music.pause();
+        }
+        if let Some(ref mut music) = self.assets.indoors_music {
+            music.set_volume(0.0);
+            let _ = music.pause();
+        }
+        if let Some(ref mut music) = self.assets.overworld_music {
+            music.set_volume(0.0);
+            let _ = music.pause();
+        }
+        self.current_music = None;
     }
 }
 
 impl EventHandler for Game {
-    fn update(&mut self, _ctx: &mut Context) -> GameResult {
+    fn update(&mut self, ctx: &mut Context) -> GameResult {
         // get delta time from ggez context time
-        let dt = _ctx.time.delta().as_secs_f32();
+        let dt = ctx.time.delta().as_secs_f32();
+
+        // GBA refresh rate limiting
+        if self.options.gba_refresh_rate {
+            let target_frame_time = 1.0 / 59.73; // GBA refresh rate
+            self.frame_limiter_accumulator += dt;
+            if self.frame_limiter_accumulator < target_frame_time {
+                // Skip this frame to maintain GBA refresh rate
+                return Ok(());
+            }
+            self.frame_limiter_accumulator -= target_frame_time;
+        }
+
+        // Update FPS counter
+        self.fps_counter += 1;
+        self.fps_timer += dt;
+        if self.fps_timer >= 1.0 {
+            self.fps_display = self.fps_counter;
+            self.fps_counter = 0;
+            self.fps_timer = 0.0;
+        }
 
         if self.options.visible {
             // pause game updates when options visible
@@ -78,19 +163,25 @@ impl EventHandler for Game {
 
         match self.state {
             GameState::Playing => {
-                self.player.update(_ctx, dt, &self.map);
+                self.player.update(ctx, dt, &self.map);
                 for enemy in &mut self.enemies {
-                    enemy.update(_ctx, dt, &self.player, &self.map);
+                    enemy.update(ctx, dt, &self.player, &self.map);
                 }
             }
             GameState::Intro => {
                 // advance intro timer (auto-advance handled by Intro struct)
                 if self.intro.update(dt) {
                     self.state = GameState::Playing;
+                    // Set indoors music for gameplay
+                    self.set_music(ctx, "indoors");
+                    println!("Game state: Intro -> Playing");
                 }
             }
             GameState::Title => {
-                // idle until player presses start
+                // Set title music only once
+                if self.current_music.is_none() {
+                    self.set_music(ctx, "title");
+                }
             }
         }
 
@@ -144,6 +235,15 @@ impl EventHandler for Game {
     // draw options over everything when visible
     self.options.draw(ctx, &mut canvas)?;
 
+        // Draw FPS counter if enabled
+        if self.options.show_fps {
+            let fps_text = ggez::graphics::Text::new(ggez::graphics::TextFragment::new(format!("FPS: {}", self.fps_display)).scale(20.0));
+            let win_size = ctx.gfx.window().inner_size();
+            let fps_x = win_size.width as f32 - 80.0;
+            let fps_y = 10.0;
+            canvas.draw(&fps_text, ggez::graphics::DrawParam::new().dest([fps_x, fps_y]).color(ggez::graphics::Color::YELLOW));
+        }
+
         canvas.finish(ctx)
     }
 
@@ -184,6 +284,13 @@ impl EventHandler for Game {
                                     self.fullscreen_scale_mul = mul;
                             }
                         }
+                        "toggle_fps" => {
+                            // FPS counter toggle - no special handling needed here
+                        }
+                        "toggle_gba_refresh" => {
+                            // GBA refresh rate toggle - frame limiting handled in update()
+                            self.frame_limiter_accumulator = 0.0; // Reset accumulator
+                        }
                         "exit" => std::process::exit(0),
                         "return" => { /* handled inside options */ }
                         _ => {}
@@ -195,50 +302,55 @@ impl EventHandler for Game {
             match self.state {
                 GameState::Title => {
                     if self.title_screen.handle_input(input) {
+                        // Stop title music when leaving title screen
+                        self.stop_music(ctx);
                         self.state = GameState::Intro;
                         // reset intro
                         self.intro.index = 0;
                         self.intro.timer = 0.0;
+                        println!("Game state: Title -> Intro");
                     }
                 }
                 GameState::Intro => {
                     if self.intro.handle_input(input) {
                         self.state = GameState::Playing;
+                        // Set indoors music for gameplay
+                        self.set_music(ctx, "indoors");
                         println!("Game state: Intro -> Playing");
                     }
                 }
                 GameState::Playing => {
                     // Interact key (Z)
                     if code == KeyCode::Z {
-                        // determine tile the player is facing by looking at target - position vector
                         let pos = self.player.get_position();
-                        // facing vector: if player is moving or has a target, prefer the target delta; otherwise, default to down
-                        let facing = {
-                            let tgt = self.player.target;
-                            let dx = (tgt.x - pos.x).signum();
-                            let dy = (tgt.y - pos.y).signum();
-                            if dx == 0.0 && dy == 0.0 { (0.0, 1.0) } else { (dx, dy) }
-                        };
+                        let player_tx = ((pos.x + TILE_SIZE/2.0) / TILE_SIZE) as usize;
+                        let player_ty = ((pos.y + TILE_SIZE/2.0) / TILE_SIZE) as usize;
+                        
+                        // First, try to interact with the tile the player is standing on (for closing doors)
+                        if self.map.can_interact_tile(player_tx, player_ty, player_tx, player_ty) {
+                            if self.map.interact_tile(player_tx, player_ty) {
+                                return Ok(());
+                            }
+                        }
+                        
+                        // If that didn't work, try the tile the player is facing (for opening doors)
+                        let facing = self.player.facing;
                         let tx = ((pos.x + TILE_SIZE/2.0) / TILE_SIZE + facing.0) as isize;
                         let ty = ((pos.y + TILE_SIZE/2.0) / TILE_SIZE + facing.1) as isize;
                         if tx >= 0 && ty >= 0 {
                             let txu = tx as usize;
                             let tyu = ty as usize;
-                            if self.map.interact_tile(txu, tyu) {
-                                // interaction changed tile; nothing else to do for now
+                            if self.map.can_interact_tile(txu, tyu, player_tx, player_ty) {
+                                if self.map.interact_tile(txu, tyu) {
+                                    // interaction changed tile; nothing else to do for now
+                                }
                             }
                         }
                         return Ok(());
                     }
 
-                    // forward grid key presses to the player
-                    match code {
-                        KeyCode::Left | KeyCode::Right | KeyCode::Up | KeyCode::Down
-                        | KeyCode::A | KeyCode::D | KeyCode::W | KeyCode::S => {
-                            self.player.handle_key(code);
-                        }
-                        _ => {}
-                    }
+                    // Movement is now handled in player.update() via continuous key checking
+                    // No need to forward movement keys here anymore
                 }
             }
         }

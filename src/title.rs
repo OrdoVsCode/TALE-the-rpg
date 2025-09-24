@@ -82,18 +82,18 @@ impl TitleScreen {
     }
 
     /// Simple input handler: return true when the player pressed start
-    /// (Enter or Space). Keep this thin so the `Game` state machine decides what
+    /// (Z key is the global confirm key). Keep this thin so the `Game` state machine decides what
     /// to do next.
     pub fn handle_input(&self, input: KeyInput) -> bool {
         if let Some(k) = input.keycode {
-            return k == KeyCode::Return || k == KeyCode::Space;
+            return k == KeyCode::Z;
         }
         false
     }
 
     /// Default title used when no file is present. Edit these if you want quick changes.
     pub fn default() -> TitleScreen {
-    let mut s = TitleScreen::new("TALE", "A war on life itself");
+    let mut s = TitleScreen::new("TALE", "Press Z to begin");
         // EDIT POINT: increase scale for epic lettering; change this if too large
         s.title_scale = 96.0;
         s.subtitle_scale = 20.0;

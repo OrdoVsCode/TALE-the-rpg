@@ -23,7 +23,7 @@ impl Intro {
         let line = &self.lines[idx];
         let text = Text::new(TextFragment::new(line.clone()).scale(24.0));
         canvas.draw(&text, DrawParam::new().dest([40.0, 40.0]).color(Color::WHITE));
-        let prompt = Text::new(TextFragment::new("Press Enter to continue").scale(18.0));
+        let prompt = Text::new(TextFragment::new("Press Z to continue").scale(18.0));
         canvas.draw(&prompt, DrawParam::new().dest([40.0, h - 60.0]).color(Color::WHITE));
         Ok(())
     }
@@ -44,7 +44,7 @@ impl Intro {
     /// Manual advance via key input. Returns true when finished.
     pub fn handle_input(&mut self, input: KeyInput) -> bool {
         if let Some(k) = input.keycode {
-            if k == KeyCode::Return || k == KeyCode::Space {
+            if k == KeyCode::Z {
                 self.index += 1;
                 self.timer = 0.0;
                 if self.index >= self.lines.len() {

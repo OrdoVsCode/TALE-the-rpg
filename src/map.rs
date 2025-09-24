@@ -43,6 +43,16 @@ impl Map {
         self.rooms[self.current].interact_tile(tx, ty)
     }
 
+    pub fn can_interact_tile(&self, tx: usize, ty: usize, player_tx: usize, player_ty: usize) -> bool {
+        self.rooms[self.current].can_interact_tile(tx, ty, player_tx, player_ty)
+    }
+
+    pub fn is_movement_allowed(&self, from_x: f32, from_y: f32, to_x: f32, to_y: f32, w: f32, h: f32) -> bool {
+        self.rooms[self.current].is_movement_allowed(from_x, from_y, to_x, to_y, w, h)
+    }
+
+
+
     /// Add a new room and return its index.
     pub fn add_room(&mut self, room: Box<dyn Room>) -> usize {
         self.rooms.push(room);
